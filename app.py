@@ -1,20 +1,35 @@
-
 import streamlit as st
 import pandas as pd
 import yfinance as yf
 import platform
+import io # 텍스트 변환용 도구
 
 # 1. 페이지 설정
 st.set_page_config(page_title="디지털강남서원 자산관리", layout="wide")
 
 # 2. 제목
 st.title("📈 디지털강남서원 실전 자산관리")
-st.markdown("### 내가 직접 만드는 포트폴리오 (비중 분석)")
-st.info("왼쪽 사이드바에 **종목코드**와 **수량**을 직접 입력하세요.")
+st.markdown("### 구글시트 연동형 포트폴리오")
+st.info("왼쪽 사이드바에 엑셀이나 구글시트 내용을 **복사(Ctrl+C)해서 붙여넣기(Ctrl+V)** 하세요.")
 st.markdown("---")
 
-# 3. 사이드바: 직접 입력하는 표
-st.sidebar.header("📝 종목 입력 (직접 추가)")
+# 3. 사이드바 설정
+st.sidebar.header("📝 데이터 입력")
+
+# ---------------------------------------------------------
+# 📌 [핵심 기능] 엑셀/구글시트 복붙 전용 입력창
+# ---------------------------------------------------------
+st.sidebar.subheader("1. 엑셀 데이터 붙여넣기")
+st.sidebar.caption("종목코드와 수량(숫자)만 드래그해서 복사하세요.")
+
+# 기본 예시 텍스트 (사용자가 지우고 붙여넣을 공간)
+example_text = """005930.KS	100
+AAPL	10
+005380.KS	30"""
+
+paste_area = st.sidebar.text_area("여기에 Ctrl+V 하세요", example_text, height=150)
+
+# ---------------------------------------------------------
 
 # 종목 이름 사전
 stock_names = {
@@ -33,14 +48,6 @@ stock_names = {
     "SPY": "S&P500 ETF"
 }
 
-# 기본 데이터 (빈 줄 추가는 표 아래 + 버튼)
-default_data = pd.DataFrame([
-    {"종목코드": "005930.KS", "수량": 10},
-    {"종목코드": "AAPL", "수량": 5},
-])
-
-input_df = st.sidebar.data_editor(default_data, num_rows="dynamic")
-
 # 4. RSI 계산 함수
 def calculate_rsi(data, window=14):
     delta = data.diff(1)
@@ -51,8 +58,21 @@ def calculate_rsi(data, window=14):
 
 # 5. 실행 로직
 if st.sidebar.button("🚀 자산 비중 분석하기"):
-    with st.spinner('현재가 및 자산 비중 계산 중...'):
+    with st.spinner('엑셀 데이터를 읽고 분석 중입니다...'):
         try:
+            # 1단계: 붙여넣은 텍스트를 데이터프레임으로 변환
+            if paste_area.strip():
+                # 탭(Tab)이나 콤마, 공백 등으로 구분된 데이터를 읽음
+                try:
+                    # sep='\t'는 엑셀/구글시트 복사본이 탭으로 구분되기 때문
+                    input_df = pd.read_csv(io.StringIO(paste_area), sep='\t', header=None, names=['종목코드', '수량'])
+                except:
+                    # 탭이 안 먹힐 경우 공백으로 시도
+                    input_df = pd.read_csv(io.StringIO(paste_area), sep=r'\s+', header=None, names=['종목코드', '수량'])
+            else:
+                st.warning("입력된 데이터가 없습니다.")
+                st.stop()
+
             # 환율 조회
             fx_ticker = yf.Ticker("KRW=X")
             fx_data = fx_ticker.history(period="1d")
@@ -61,13 +81,19 @@ if st.sidebar.button("🚀 자산 비중 분석하기"):
             total_val = 0
             portfolio_data = []
 
-            # 1단계: 데이터 수집
+            # 2단계: 데이터 수집 및 분석
             total_rows = len(input_df)
             progress_bar = st.progress(0)
 
             for i, (index, row) in enumerate(input_df.iterrows()):
+                # 데이터 정제 (공백 제거 등)
                 code = str(row['종목코드']).strip()
-                qty = int(row['수량'])
+                
+                # 수량에 콤마(,)가 섞여 있어도 처리 (예: "1,000")
+                try:
+                    qty = int(str(row['수량']).replace(',', ''))
+                except:
+                    continue # 숫자가 아니면 건너뜀
                 
                 if not code: continue
 
@@ -111,15 +137,12 @@ if st.sidebar.button("🚀 자산 비중 분석하기"):
                 total_val += val_krw
                 progress_bar.progress((i + 1) / total_rows)
 
-            # 2단계: 결과 출력
+            # 3단계: 결과 출력
             if total_val > 0:
                 res_df = pd.DataFrame(portfolio_data)
-                
-                # 비중 계산
                 res_df['자산비중(%)'] = (res_df['평가금액(원)'] / total_val) * 100
                 res_df = res_df.sort_values(by='평가금액(원)', ascending=False)
                 
-                # 표 포맷팅
                 display_df = res_df.copy()
                 display_df['자산비중(%)'] = display_df['자산비중(%)'].apply(lambda x: f"{x:.1f}%")
                 display_df['평가금액(원)'] = display_df['평가금액(원)'].apply(lambda x: f"{x:,.0f} 원")
@@ -127,36 +150,20 @@ if st.sidebar.button("🚀 자산 비중 분석하기"):
                 st.subheader(f"💰 총 자산: {total_val:,.0f} 원")
                 st.write(f"(적용 환율: {fx:,.2f} 원/$)")
                 
-                st.dataframe(
-                    display_df, 
-                    use_container_width=True,
-                    hide_index=True
-                )
+                st.dataframe(display_df, use_container_width=True, hide_index=True)
                 
-                # ==========================================
-                # 👇 [추가됨] 하단 RSI 설명 섹션
-                # ==========================================
+                # 하단 설명
                 st.markdown("---")
-                with st.expander("ℹ️ RSI(상대강도지수)란 무엇인가요? (클릭해서 보기)"):
+                with st.expander("ℹ️ RSI(상대강도지수)란 무엇인가요?"):
                     st.markdown("""
-                    **RSI (Relative Strength Index)**는 주식 시장의 **'체온계'**와 같습니다.
-                    주가가 얼마나 과열되었는지(비싼지), 혹은 얼마나 침체되었는지(싼지)를 **0부터 100까지의 숫자**로 알려줍니다.
-                    
-                    * **70 이상 (❄️ 과열 구간):** * 사람들이 너무 많이 사서 가격이 비정상적으로 올랐습니다. 
-                        * 조만간 떨어질 가능성이 높으니 **'매도'**를 고민하세요.
-                    
-                    * **30 이하 (🔥 침체 구간):** * 사람들이 공포에 질려 너무 많이 팔았습니다. 
-                        * 가격이 쌀 때이니 **'매수'**를 고민할 좋은 기회입니다.
-                        
-                    * **40 ~ 60 (관망):** * 특별한 과열이나 침체 없이 평범하게 흘러가는 구간입니다.
+                    **RSI (Relative Strength Index)**는 주식 시장의 체온계입니다.
+                    * **70 이상:** 과열 (매도 검토)
+                    * **30 이하:** 침체 (매수 검토)
                     """)
-                    st.caption("※ 본 지표는 보조 수단이며, 투자의 책임은 본인에게 있습니다.")
-                # ==========================================
-                
             else:
-                st.warning("데이터를 가져오지 못했습니다.")
+                st.warning("분석할 수 있는 유효한 종목이 없습니다. 코드를 확인해주세요.")
 
             st.success("분석 완료")
             
         except Exception as e:
-            st.error(f"오류가 발생했습니다: {e}")
+            st.error(f"오류가 발생했습니다. 붙여넣은 데이터를 확인해주세요: {e}")
