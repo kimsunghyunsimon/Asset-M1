@@ -4,134 +4,128 @@ import yfinance as yf
 import matplotlib.pyplot as plt
 
 # 1. 페이지 설정
-st.set_page_config(page_title="디지털강남서원 AI 어드바이저", layout="wide")
+st.set_page_config(page_title="AI 전략 백테스팅", layout="wide")
+st.title("🧪 AI 투자 전략 검증기 (Back-testing)")
+st.info("과거 데이터로 돌아가 **'RSI 30에 사고, 70에 파는 전략'**을 시뮬레이션합니다.")
 
-# 한글 폰트 (스트림릿 클라우드용)
-import platform
-from matplotlib import font_manager, rc
-plt.rcParams['axes.unicode_minus'] = False
-if platform.system() == 'Linux':
-    plt.rc('font', family='NanumGothic')
+# 2. 사이드바 설정
+st.sidebar.header("⚙️ 시뮬레이션 설정")
+ticker = st.sidebar.text_input("종목 코드 입력", value="005930.KS") # 기본 삼성전자
+start_date = st.sidebar.date_input("시작일", pd.to_datetime("2020-01-01"))
+initial_capital = st.sidebar.number_input("초기 투자금 (원)", value=10000000) # 1천만원
 
-# 2. 제목 및 소개
-st.title("🤖 디지털강남서원 AI 로보어드바이저")
-st.markdown("### 30년 금융 전문가의 노하우와 AI 기술의 결합")
-st.info("보유하신 종목을 입력하면 **자산 가치**와 **AI 매매 신호(RSI)**를 분석해 드립니다.")
-st.markdown("---")
+# RSI 전략 설정 (나중에 슬라이더로 조절 가능하게)
+rsi_buy = 30
+rsi_sell = 70
 
-# 3. 사이드바 입력
-st.sidebar.header("📝 포트폴리오 구성")
-
-# 10개 종목 기본 세팅
-default_data = pd.DataFrame([
-    {"종목코드": "005930.KS", "수량": 100},  # 삼성전자
-    {"종목코드": "000660.KS", "수량": 50},   # SK하이닉스
-    {"종목코드": "005380.KS", "수량": 30},   # 현대차
-    {"종목코드": "005490.KS", "수량": 20},   # POSCO홀딩스
-    {"종목코드": "035420.KS", "수량": 15},   # NAVER
-    {"종목코드": "AAPL", "수량": 10},        # 애플
-    {"종목코드": "TSLA", "수량": 10},        # 테슬라
-    {"종목코드": "NVDA", "수량": 5},         # 엔비디아
-    {"종목코드": "MSFT", "수량": 5},         # 마이크로소프트
-    {"종목코드": "QQQ", "수량": 20}          # QQQ
-])
-input_df = st.sidebar.data_editor(default_data, num_rows="dynamic")
-
-# 4. 분석 로직 (RSI 계산 함수 추가)
-def calculate_rsi(data, window=14):
-    delta = data.diff(1)
-    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+# 3. 데이터 가져오기 및 지표 계산 함수
+def get_data(ticker, start):
+    df = yf.download(ticker, start=start, progress=False)
+    # 수정 종가 사용 (배당/액면분할 반영)
+    if 'Adj Close' in df.columns:
+        df['Price'] = df['Adj Close']
+    else:
+        df['Price'] = df['Close']
+    
+    # RSI 계산
+    delta = df['Price'].diff(1)
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
-    return 100 - (100 / (1 + rs))
+    df['RSI'] = 100 - (100 / (1 + rs))
+    return df
 
-# 5. 실행 버튼
-if st.sidebar.button("🚀 AI 정밀 분석 시작"):
-    with st.spinner('AI가 전 세계 데이터를 분석하고 매매 타이밍을 계산 중입니다...'):
+# 4. 백테스팅 로직 (핵심 엔진)
+def run_backtest(df):
+    cash = initial_capital
+    position = 0 # 보유 주식 수
+    
+    # 기록용 리스트
+    history = []     # 매매 일지
+    equity_curve = [] # 자산 변동 그래프용
+    
+    buy_price = 0 # 수익률 계산용
+
+    for i in range(len(df)):
+        date = df.index[i]
+        price = df['Price'].iloc[i]
+        rsi = df['RSI'].iloc[i]
+        
+        # 첫 14일은 RSI가 없으므로 패스
+        if pd.isna(rsi):
+            equity_curve.append(initial_capital)
+            continue
+            
+        action = "HOLD"
+        
+        # --- 매매 로직 ---
+        # 1. 매수 조건: 현금 보유 중이고 & RSI가 30 미만일 때
+        if position == 0 and rsi < rsi_buy:
+            position = cash // price # 전액 매수
+            cash = cash - (position * price)
+            buy_price = price
+            action = "BUY"
+            history.append({"날짜": date, "구분": "🔴 매수", "가격": price, "RSI": rsi, "수량": position})
+            
+        # 2. 매도 조건: 주식 보유 중이고 & RSI가 70 초과일 때
+        elif position > 0 and rsi > rsi_sell:
+            cash = cash + (position * price)
+            return_rate = (price - buy_price) / buy_price * 100
+            history.append({"날짜": date, "구분": "🔵 매도", "가격": price, "RSI": rsi, "수익률(%)": return_rate})
+            position = 0 # 전량 매도
+            action = "SELL"
+            
+        # 매일의 총 자산 가치 기록 (현금 + 주식평가액)
+        total_value = cash + (position * price)
+        equity_curve.append(total_value)
+        
+    df['Strategy_Value'] = equity_curve
+    return df, pd.DataFrame(history)
+
+# 5. 실행 버튼 및 결과 출력
+if st.sidebar.button("🚀 시뮬레이션 시작"):
+    with st.spinner('타임머신 가동 중...'):
         try:
-            # 환율 조회
-            fx_ticker = yf.Ticker("KRW=X")
-            fx = fx_ticker.history(period="1d")['Close'].iloc[-1]
+            # 데이터 로드
+            df = get_data(ticker, start_date)
             
-            total_val = 0
-            portfolio_data = []
+            # 백테스팅 실행
+            df_result, trade_log = run_backtest(df)
+            
+            # --- 결과 분석 ---
+            final_value = df_result['Strategy_Value'].iloc[-1]
+            buy_hold_value = (initial_capital / df_result['Price'].iloc[0]) * df_result['Price'].iloc[-1]
+            
+            total_return = ((final_value - initial_capital) / initial_capital) * 100
+            buy_hold_return = ((buy_hold_value - initial_capital) / initial_capital) * 100
+            
+            # 1. 상단 요약 지표
+            col1, col2, col3 = st.columns(3)
+            col1.metric("최종 자산 (AI 매매)", f"{final_value:,.0f} 원", f"{total_return:.1f}%")
+            col2.metric("존버했을 때 (Buy & Hold)", f"{buy_hold_value:,.0f} 원", f"{buy_hold_return:.1f}%")
+            col3.metric("매매 횟수", f"{len(trade_log)} 회")
+            
+            # 2. 수익률 그래프 비교 (스트림릿 내장 차트 사용)
+            st.subheader("📈 자산 증식 곡선 (AI vs 존버)")
+            
+            # 비교를 위해 데이터프레임 정리
+            chart_data = pd.DataFrame({
+                'AI 전략': df_result['Strategy_Value'],
+                '그냥 보유(Buy&Hold)': (df_result['Price'] / df_result['Price'].iloc[0]) * initial_capital
+            })
+            st.line_chart(chart_data)
+            
+            # 3. 매매 일지 상세
+            st.subheader("📝 AI 매매 기록")
+            if not trade_log.empty:
+                # 날짜 포맷 정리
+                trade_log['날짜'] = trade_log['날짜'].dt.strftime('%Y-%m-%d')
+                trade_log['가격'] = trade_log['가격'].apply(lambda x: f"{x:,.0f}원")
+                trade_log['RSI'] = trade_log['RSI'].round(1)
+                st.dataframe(trade_log, hide_index=True)
+            else:
+                st.warning("조건에 맞는 매매가 한 번도 발생하지 않았습니다. (기간을 늘리거나 RSI 기준을 조정해보세요)")
 
-            # 진행률 바 (Progress Bar)
-            progress_bar = st.progress(0)
-            total_rows = len(input_df)
-
-            for i, (index, row) in enumerate(input_df.iterrows()):
-                code = str(row['종목코드']).strip()
-                qty = int(row['수량'])
-                
-                # 데이터 가져오기 (RSI 계산 위해 2달치)
-                ticker = yf.Ticker(code)
-                hist = ticker.history(period="3mo")
-                
-                if hist.empty:
-                    continue
-                    
-                price = hist['Close'].iloc[-1]
-                
-                # 기술적 지표 계산 (RSI)
-                rsi_series = calculate_rsi(hist['Close'])
-                rsi = rsi_series.iloc[-1]
-                
-                # 매매 의견 도출
-                opinion = "HOLD (관망)"
-                color = "black"
-                if rsi < 30:
-                    opinion = "🔥 STRONG BUY (과매도)"
-                elif rsi > 70:
-                    opinion = "❄️ SELL (과열)"
-                elif rsi < 40:
-                    opinion = "BUY (저점 매수)"
-                
-                # 통화 변환
-                if code.endswith(".KS") or code.endswith(".KQ"):
-                    val_krw = price * qty
-                    currency = "KRW"
-                    price_display = f"{price:,.0f} 원"
-                else:
-                    val_krw = price * fx * qty
-                    currency = "USD"
-                    price_display = f"{price:,.2f} $"
-                
-                portfolio_data.append({
-                    "종목": code,
-                    "수량": qty,
-                    "현재가": price_display,
-                    "RSI 지표": round(rsi, 1),
-                    "AI 의견": opinion,
-                    "평가금액(원)": val_krw
-                })
-                total_val += val_krw
-                
-                # 진행률 업데이트
-                progress_bar.progress((i + 1) / total_rows)
-
-            # 결과 처리
-            res_df = pd.DataFrame(portfolio_data)
-            
-            # 레이아웃 구성
-            col1, col2 = st.columns([1.5, 1])
-            
-            with col1:
-                st.subheader("📋 종목별 AI 진단 리포트")
-                # 평가금액(원)은 숫자 포맷팅해서 보여주기
-                display_df = res_df.copy()
-                display_df['평가금액(원)'] = display_df['평가금액(원)'].apply(lambda x: f"{x:,.0f} 원")
-                st.dataframe(display_df, hide_index=True)
-
-            with col2:
-                st.subheader("💰 총 자산 & 포트폴리오")
-                st.metric(label="총 평가 금액", value=f"{total_val:,.0f} 원", delta="실시간 환율 적용")
-                
-                fig, ax = plt.subplots()
-                ax.pie(res_df['평가금액(원)'], labels=res_df['종목'], autopct='%1.1f%%', startangle=90, colors=plt.cm.Pastel1(range(len(res_df))))
-                st.pyplot(fig)
-            
-            st.success("✅ 분석 완료! 'AI 의견'을 참고하여 리밸런싱 하세요.")
-            
         except Exception as e:
-            st.error(f"분석 중 오류가 발생했습니다: {e}")
+            st.error(f"오류 발생: {e}")
+            st.write("종목 코드가 정확한지 확인해주세요 (예: 005930.KS)")
