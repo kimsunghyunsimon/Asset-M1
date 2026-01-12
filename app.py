@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
-import io
+import matplotlib.pyplot as plt
+import koreanize_matplotlib # 한글 폰트 지원
 
 # 1. 페이지 설정
 st.set_page_config(page_title="디지털강남서원 시장 분석기", layout="wide")
@@ -9,36 +10,27 @@ st.set_page_config(page_title="디지털강남서원 시장 분석기", layout="
 # 2. 제목
 st.title("📡 디지털강남서원 AI 시장 정밀 분석기")
 st.markdown("### 4대 기술적 지표(RSI, MACD, 볼린저밴드, 스토캐스틱) 기반 진단")
-st.success("왼쪽 사이드바에 **종목코드**만 입력하세요. AI가 복잡한 차트를 분석해 드립니다.")
+st.success("왼쪽 사이드바에 **종목코드**만 입력하세요. 목록 분석 후 **개별 차트**를 확인할 수 있습니다.")
 st.markdown("---")
 
 # 3. 사이드바 설정
 st.sidebar.header("🔍 종목 분석 요청")
 
-# 📌 입력 가이드
+# 입력 가이드
 st.sidebar.info("""
 **💡 입력 예시 (중요)**
-입력창에 종목코드를 아래 규칙대로 적어주세요.
-
-* **코스피 (삼성전자 등):** 숫자.KS  
-  (예: `005930.KS`)
-* **코스닥 (에코프로 등):** 숫자.KQ  
-  (예: `086520.KQ`)
-* **미국 (엔비디아 등):** 영어약어  
-  (예: `NVDA`)
+* **코스피:** 숫자.KS (예: `005930.KS`)
+* **코스닥:** 숫자.KQ (예: `086520.KQ`)
+* **미국:** 영어약어 (예: `NVDA`)
 """)
 
-st.sidebar.subheader("⬇️ 여기에 붙여넣으세요")
-
-# 예시 텍스트
+st.sidebar.subheader("⬇️ 종목코드 입력")
 example_text = """005930.KS
 000660.KS
 AAPL
-TSLA
-NVDA"""
+TSLA"""
 
-# 입력창
-paste_area = st.sidebar.text_area("종목코드 목록 (한 줄에 하나씩)", example_text, height=200)
+paste_area = st.sidebar.text_area("목록 붙여넣기 (한 줄에 하나)", example_text, height=200)
 
 # 종목 이름 사전
 stock_names = {
@@ -47,7 +39,7 @@ stock_names = {
     "105560.KS": "KB금융", "086520.KQ": "에코프로", "247540.KQ": "에코프로비엠",
     "AAPL": "애플", "TSLA": "테슬라", "NVDA": "엔비디아", 
     "MSFT": "마이크로소프트", "QQQ": "나스닥100", "SPY": "S&P500",
-    "GOOGL": "구글(Alphabet)"
+    "GOOGL": "구글"
 }
 
 # ==========================================================
@@ -82,166 +74,163 @@ def get_stochastic(data, n=14):
     return k
 
 # ==========================================================
+# 🚀 메인 실행 로직
+# ==========================================================
 
 if st.sidebar.button("🚀 AI 시장 진단 시작"):
-    with st.spinner('전 세계 증시 데이터를 수집하고 4대 지표를 분석 중입니다...'):
-        try:
-            # 입력 데이터 처리
-            codes = [line.strip() for line in paste_area.split('\n') if line.strip()]
-            
-            if not codes:
-                st.warning("입력된 종목코드가 없습니다.")
-                st.stop()
+    # 세션 상태에 데이터 저장 (그래프 그리기 위해)
+    st.session_state['analyzed'] = True
+    st.session_state['codes'] = [line.strip() for line in paste_area.split('\n') if line.strip()]
 
-            analysis_data = []
-            progress_bar = st.progress(0)
-            total_rows = len(codes)
+# 분석 결과가 있거나, 버튼을 눌렀을 때 실행
+if st.session_state.get('analyzed'):
+    with st.spinner('데이터 분석 중...'):
+        codes = st.session_state['codes']
+        if not codes:
+            st.warning("입력된 코드가 없습니다.")
+            st.stop()
 
-            for i, code in enumerate(codes):
-                # 데이터 수집 (최근 6개월)
+        analysis_data = []
+        chart_data_dict = {} # 차트 그리기용 데이터 저장소
+        
+        progress_bar = st.progress(0)
+        total_rows = len(codes)
+
+        # 1단계: 전체 목록 분석 및 표 생성
+        for i, code in enumerate(codes):
+            try:
                 ticker = yf.Ticker(code)
-                hist = ticker.history(period="6mo")
+                hist = ticker.history(period="6mo") # 6개월 데이터
+                if hist.empty: continue
                 
-                if hist.empty:
-                    continue
-                
-                # 종목명 찾기 (에러가 났던 부분 수정됨)
+                # 이름 찾기
                 name = stock_names.get(code, code)
-                if name == code: 
-                    try:
-                        name = ticker.info.get('longName', code)
-                    except:
-                        pass # 인터넷 검색 실패시 그냥 코드명 사용
+                if name == code:
+                    try: name = ticker.info.get('longName', code)
+                    except: pass
                 
+                # 데이터 저장 (나중에 차트 그릴 때 씀)
+                chart_data_dict[f"{name} ({code})"] = {
+                    'hist': hist, 
+                    'code': code
+                }
+
+                # 지표 계산 (표시용 최신값)
                 price = hist['Close'].iloc[-1]
-                
-                # --- 지표 계산 ---
                 rsi = get_rsi(hist).iloc[-1]
                 
-                macd_line, macd_signal = get_macd(hist)
-                macd_val = macd_line.iloc[-1]
-                signal_val = macd_signal.iloc[-1]
+                macd, signal = get_macd(hist)
+                macd_val = macd.iloc[-1]
+                sig_val = signal.iloc[-1]
                 
-                upper, mid, lower = get_bollinger(hist)
-                bb_lower = lower.iloc[-1]
-                bb_upper = upper.iloc[-1]
+                up, mid, low = get_bollinger(hist)
+                bb_low = low.iloc[-1]
+                bb_up = up.iloc[-1]
                 
-                stoch_k = get_stochastic(hist).iloc[-1]
+                stoch = get_stochastic(hist).iloc[-1]
 
-                # --- 종합 점수 채점 ---
+                # 점수 매기기
                 score = 0
                 reasons = []
                 
-                # 1. RSI
-                if rsi < 30: 
-                    score += 1
-                    reasons.append("RSI 과매도")
-                elif rsi > 70: 
-                    score -= 1
-                    reasons.append("RSI 과열")
-                    
-                # 2. MACD
-                if macd_val > signal_val:
-                    score += 0.5 
-                else:
-                    score -= 0.5
-                    
-                # 3. Bollinger
-                if price <= bb_lower * 1.02:
-                    score += 1
-                    reasons.append("밴드 하단(저점)")
-                elif price >= bb_upper * 0.98:
-                    score -= 1
-                    reasons.append("밴드 상단(고점)")
-                    
-                # 4. Stochastic
-                if stoch_k < 20:
-                    score += 0.5
-                    reasons.append("스토캐스틱 바닥")
-                elif stoch_k > 80:
-                    score -= 0.5
+                if rsi < 30: score+=1; reasons.append("RSI 과매도")
+                elif rsi > 70: score-=1; reasons.append("RSI 과열")
                 
-                # 의견 도출
-                if score >= 1.5: final_opinion = "🔥 강력 매수"
-                elif score >= 0.5: final_opinion = "매수 우위"
-                elif score <= -1.5: final_opinion = "❄️ 강력 매도"
-                elif score <= -0.5: final_opinion = "매도 우위"
-                else: final_opinion = "HOLD (관망)"
+                if macd_val > sig_val: score+=0.5
+                else: score-=0.5
                 
-                # 화폐 단위 표시
-                if code.endswith(".KS") or code.endswith(".KQ"):
-                    price_display = f"{price:,.0f} 원"
-                else:
-                    price_display = f"{price:,.2f} $"
+                if price <= bb_low * 1.02: score+=1; reasons.append("밴드 하단")
+                elif price >= bb_up * 0.98: score-=1; reasons.append("밴드 상단")
+                
+                if stoch < 20: score+=0.5; reasons.append("스토캐스틱 바닥")
+                elif stoch > 80: score-=0.5
+
+                # 의견
+                if score >= 1.5: op = "🔥 강력 매수"
+                elif score >= 0.5: op = "매수 우위"
+                elif score <= -1.5: op = "❄️ 강력 매도"
+                elif score <= -0.5: op = "매도 우위"
+                else: op = "HOLD (관망)"
+                
+                # 화폐
+                p_str = f"{price:,.0f} 원" if code.endswith((".KS", ".KQ")) else f"{price:,.2f} $"
                 
                 analysis_data.append({
-                    "종목명": name,
-                    "코드": code,
-                    "현재가": price_display,
-                    "종합 의견": final_opinion,
+                    "종목명": f"{name} ({code})", # 선택박스용 키
+                    "현재가": p_str,
+                    "종합 의견": op,
                     "핵심 근거": ", ".join(reasons) if reasons else "-",
-                    "RSI 지표": f"{rsi:.0f}",
+                    "RSI": f"{rsi:.0f}",
                     "점수": score
                 })
-                progress_bar.progress((i + 1) / total_rows)
+            except:
+                continue
+            progress_bar.progress((i + 1) / total_rows)
 
-            # 결과 출력
-            if analysis_data:
-                res_df = pd.DataFrame(analysis_data)
-                res_df = res_df.sort_values(by='점수', ascending=False)
-                
-                st.subheader("📋 AI 투자 진단 리포트")
-                
-                st.dataframe(
-                    res_df[['종목명', '코드', '현재가', '종합 의견', '핵심 근거', 'RSI 지표']], 
-                    use_container_width=True, 
-                    hide_index=True
-                )
-                
-                # 하단 설명 섹션
-                st.markdown("---")
-                st.subheader("📚 4대 투자 지표 간단 해설")
-                
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.info("🌡️ RSI (상대강도지수)")
-                    st.markdown("""
-                    **"시장 온도계"**
-                    * **70 이상:** 너무 뜨거움 (과열/매도)
-                    * **30 이하:** 너무 차가움 (침체/매수)
-                    """)
-
-                with col2:
-                    st.success("🌊 MACD (추세선)")
-                    st.markdown("""
-                    **"파도의 방향"**
-                    * 상승/하락의 큰 흐름을 봅니다.
-                    * 골든크로스(상향돌파)시 매수 신호로 봅니다.
-                    """)
-
-                with col3:
-                    st.warning("b 볼린저 밴드")
-                    st.markdown("""
-                    **"가격의 고무줄"**
-                    * 밴드 하단을 건드리면 **'싸다'**고 봅니다.
-                    * 밴드 상단을 건드리면 **'비싸다'**고 봅니다.
-                    """)
-
-                with col4:
-                    st.error("⚡ 스토캐스틱")
-                    st.markdown("""
-                    **"단기 타이밍"**
-                    * RSI보다 더 민감한 지표입니다.
-                    * 단기 매매 타이밍을 잡을 때 유용합니다.
-                    """)
-                
-                st.caption("※ 본 분석 결과는 AI 알고리즘에 의한 참고용 자료이며, 최종 투자의 책임은 본인에게 있습니다.")
-
-            else:
-                st.warning("분석할 종목이 없습니다.")
-
-            st.success("분석 완료!")
+        # 2단계: 표 출력
+        if analysis_data:
+            df = pd.DataFrame(analysis_data).sort_values(by='점수', ascending=False)
+            st.subheader("📋 AI 투자 진단 리포트 (전체 요약)")
+            st.dataframe(df[['종목명', '현재가', '종합 의견', '핵심 근거', 'RSI']], use_container_width=True, hide_index=True)
             
-        except Exception as e:
-            st.error(f"오류 발생: {e}")
+            # ----------------------------------------------------
+            # 3단계: [NEW] 상세 분석 종목 선택 및 차트 그리기
+            # ----------------------------------------------------
+            st.markdown("---")
+            st.subheader("📈 종목별 상세 차트 분석")
+            
+            # 선택 박스 (표에 있는 종목들로 채움)
+            selected_stock = st.selectbox("분석하고 싶은 종목을 선택하세요:", df['종목명'].tolist())
+            
+            if selected_stock:
+                stock_info = chart_data_dict[selected_stock]
+                data = stock_info['hist']
+                
+                st.info(f"Checking: **{selected_stock}** 의 4대 지표 상세 그래프입니다.")
+                
+                # 지표 전체 다시 계산 (그래프용)
+                data['RSI'] = get_rsi(data)
+                data['MACD'], data['Signal'] = get_macd(data)
+                data['Upper'], data['MA'], data['Lower'] = get_bollinger(data)
+                data['Stoch'] = get_stochastic(data)
+                
+                # 그래프 그리기 (4행 1열)
+                fig, axes = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
+                
+                # 1. Price & Bollinger
+                axes[0].set_title("Price & Bollinger Bands")
+                axes[0].plot(data.index, data['Close'], label='Price', color='black')
+                axes[0].plot(data.index, data['Upper'], linestyle='--', label='Upper', color='red', alpha=0.5)
+                axes[0].plot(data.index, data['Lower'], linestyle='--', label='Lower', color='blue', alpha=0.5)
+                axes[0].fill_between(data.index, data['Upper'], data['Lower'], color='gray', alpha=0.1)
+                axes[0].legend(loc='upper left')
+                
+                # 2. MACD
+                axes[1].set_title("MACD & Signal")
+                axes[1].plot(data.index, data['MACD'], label='MACD', color='red')
+                axes[1].plot(data.index, data['Signal'], label='Signal', color='blue')
+                axes[1].bar(data.index, data['MACD']-data['Signal'], label='Hist', color='gray', alpha=0.3)
+                axes[1].axhline(0, color='black', linestyle='--', linewidth=0.5)
+                axes[1].legend(loc='upper left')
+
+                # 3. RSI
+                axes[2].set_title("RSI (Relative Strength Index)")
+                axes[2].plot(data.index, data['RSI'], color='purple')
+                axes[2].axhline(70, color='red', linestyle='--')
+                axes[2].axhline(30, color='blue', linestyle='--')
+                axes[2].axhline(50, color='gray', linestyle=':', linewidth=0.5)
+                axes[2].fill_between(data.index, data['RSI'], 70, where=(data['RSI']>=70), color='red', alpha=0.3)
+                axes[2].fill_between(data.index, data['RSI'], 30, where=(data['RSI']<=30), color='blue', alpha=0.3)
+                axes[2].set_ylim(0, 100)
+
+                # 4. Stochastic
+                axes[3].set_title("Stochastic Fast %K")
+                axes[3].plot(data.index, data['Stoch'], color='green')
+                axes[3].axhline(80, color='red', linestyle='--')
+                axes[3].axhline(20, color='blue', linestyle='--')
+                axes[3].set_ylim(0, 100)
+                
+                st.pyplot(fig)
+
+        else:
+            st.warning("분석 가능한 종목이 없습니다.")
