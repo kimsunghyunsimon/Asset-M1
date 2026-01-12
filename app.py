@@ -1,7 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np  # 몬테카를로 시뮬레이션용
+import numpy as np
 import plotly.graph_objects as go
 
 # -----------------------------------------------------------------------------
@@ -23,10 +23,20 @@ with st.sidebar:
     st.markdown("---")
     
     st.subheader("🔍 종목 검색")
-    ticker = st.text_input("티커 입력 (예: SPY, AAPL, NVDA)", value="SPY").upper()
+    
+    # 한국 주식 입력 팁 추가
+    with st.expander("📌 국내 주식 입력 방법 (Click)"):
+        st.markdown("""
+        **종목코드 뒤에 국가 코드를 붙여주세요.**
+        - **코스피**: `.KS` (예: 삼성전자 `005930.KS`)
+        - **코스닥**: `.KQ` (예: 에코프로 `086520.KQ`)
+        - **미국**: 티커 그대로 (예: `AAPL`)
+        """)
+
+    ticker = st.text_input("티커 입력", value="005930.KS").upper()
     period = st.selectbox("분석 기간", ["1y", "2y", "5y", "10y"], index=0)
     
-    st.info("💡 티커를 입력하고 엔터를 누르면 분석이 시작됩니다.")
+    st.info("💡 티커 입력 후 엔터(Enter)를 누르세요.")
 
 # -----------------------------------------------------------------------------
 # 3. 메인 화면 - 상단 디자인
@@ -84,7 +94,8 @@ def calculate_indicators(df):
 # [메뉴 1] AI 시장 분석기
 if menu == "🏠 AI 시장 분석기":
     if ticker:
-        df = get_data(ticker, period)
+        with st.spinner('데이터를 분석 중입니다...'):
+            df = get_data(ticker, period)
         
         if not df.empty:
             df = calculate_indicators(df)
@@ -161,7 +172,7 @@ if menu == "🏠 AI 시장 분석기":
                 score -= 1
                 reasons.append("🔻 MACD가 시그널 아래(하락추세)에 있습니다.")
 
-            # (3) 이동평균선 판단 (20일선 기준)
+            # (3) 이동평균선 판단
             if last_row['Close'] > last_row['MA20']:
                 score += 1
                 reasons.append("✅ 주가가 20일 이동평균선 위에 위치합니다.")
@@ -169,14 +180,13 @@ if menu == "🏠 AI 시장 분석기":
                 score -= 1
                 reasons.append("🔻 주가가 20일 이동평균선 아래에 위치합니다.")
 
-            # 종합 의견 도출
+            # 종합 의견
             if score >= 2: final_decision = "강력 매수 (Strong Buy)"
             elif score == 1: final_decision = "매수 (Buy)"
             elif score == 0: final_decision = "중립 (Neutral)"
             elif score == -1: final_decision = "매도 (Sell)"
             else: final_decision = "강력 매도 (Strong Sell)"
 
-            # 결과 출력 UI
             col_res1, col_res2 = st.columns([1, 2])
             with col_res1:
                 st.metric(label="현재 투자의견", value=final_decision)
@@ -186,46 +196,64 @@ if menu == "🏠 AI 시장 분석기":
 
             st.markdown("---")
 
-            # --- [Part 3] 몬테카를로 시뮬레이션 ---
+            # --- [Part 3] 몬테카를로 시뮬레이션 및 결과 코멘트 ---
             st.subheader("🔮 몬테카를로 미래 예측 (6개월)")
-            st.write("과거 변동성을 기반으로 향후 126거래일(약 6개월) 간의 주가 흐름을 50회 시뮬레이션합니다.")
             
-            days_forecast = 126
+            days_forecast = 126 # 6개월
             simulations = 50
             last_price = df['Close'].iloc[-1]
-            daily_vol = df['Close'].pct_change().std() # 일간 변동성
+            daily_vol = df['Close'].pct_change().std()
             
             sim_df = pd.DataFrame()
 
             for i in range(simulations):
-                # 랜덤 수익률 생성 (정규분포)
                 daily_returns = np.random.normal(0, daily_vol, days_forecast)
                 price_series = [last_price]
-                
                 for r in daily_returns:
                     price_series.append(price_series[-1] * (1 + r))
-                
                 sim_df[f'Sim_{i}'] = price_series
 
-            # 시뮬레이션 차트 그리기
-            fig_mc = go.Figure()
+            # --- 결과 분석 로직 추가 ---
+            # 모든 시나리오의 마지막 날(6개월 후) 가격들의 평균 계산
+            end_prices = sim_df.iloc[-1]
+            mean_end_price = end_prices.mean()
+            max_end_price = end_prices.max()
+            min_end_price = end_prices.min()
             
-            # 개별 시나리오 (흐리게)
+            # 수익률 계산
+            expected_return = ((mean_end_price - last_price) / last_price) * 100
+            
+            # 상승/하락 텍스트 컬러링
+            color_str = "red" if expected_return > 0 else "blue"
+            direction_str = "상승" if expected_return > 0 else "하락"
+
+            # 코멘트 출력
+            st.info(f"""
+            📊 **시뮬레이션 요약 분석**
+            
+            현재 주가 (**{last_price:,.0f}**) 대비 6개월 후 평균적으로 약 **:{color_str}[{expected_return:.2f}% {direction_str}]** 할 것으로 예측됩니다.
+            
+            - **평균 예상가**: {mean_end_price:,.0f}
+            - **최대 낙관가**: {max_end_price:,.0f} (Best Case)
+            - **최대 비관가**: {min_end_price:,.0f} (Worst Case)
+            """)
+
+            # 차트 그리기
+            fig_mc = go.Figure()
             for col in sim_df.columns:
                 fig_mc.add_trace(go.Scatter(y=sim_df[col], mode='lines', 
                                             line=dict(width=1, color='rgba(100, 100, 255, 0.1)'),
                                             showlegend=False))
             
-            # 평균 예상 경로 (진하게)
             fig_mc.add_trace(go.Scatter(y=sim_df.mean(axis=1), mode='lines',
                                         line=dict(width=3, color='red'), name='평균 예상 경로'))
             
-            fig_mc.update_layout(height=400, title=f"{ticker} 향후 시나리오 예측", 
-                                 xaxis_title="미래 거래일수 (Days)", yaxis_title="주가 ($)")
+            fig_mc.update_layout(height=400, title=f"{ticker} 향후 6개월 시나리오 (50회 반복)", 
+                                 xaxis_title="미래 거래일수 (Days)", yaxis_title="주가")
             st.plotly_chart(fig_mc, use_container_width=True)
 
         else:
-            st.error("데이터 로드 실패. 올바른 티커인지 확인해주세요.")
+            st.error("데이터 로드 실패. 티커를 확인해주세요. (예: 삼성전자 -> 005930.KS)")
 
 elif menu == "✨ MMI (나만의 인덱스)":
     st.subheader("✨ MMI 생성기")
