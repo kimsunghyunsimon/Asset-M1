@@ -78,7 +78,7 @@ def get_stochastic(data, n=14):
 # ==========================================================
 
 if st.sidebar.button("🚀 AI 시장 진단 시작"):
-    # 세션 상태에 데이터 저장 (그래프 그리기 위해)
+    # 세션 상태에 데이터 저장
     st.session_state['analyzed'] = True
     st.session_state['codes'] = [line.strip() for line in paste_area.split('\n') if line.strip()]
 
@@ -91,31 +91,37 @@ if st.session_state.get('analyzed'):
             st.stop()
 
         analysis_data = []
-        chart_data_dict = {} # 차트 그리기용 데이터 저장소
+        chart_data_dict = {} 
         
         progress_bar = st.progress(0)
         total_rows = len(codes)
 
-        # 1단계: 전체 목록 분석 및 표 생성
+        # 1단계: 전체 목록 분석
         for i, code in enumerate(codes):
             try:
+                # -----------------------------------------------
+                # [중요] 들여쓰기 오류가 발생했던 구간입니다.
+                # try: 바로 다음 줄은 반드시 4칸 들여써야 합니다.
+                # -----------------------------------------------
                 ticker = yf.Ticker(code)
-                hist = ticker.history(period="6mo") # 6개월 데이터
+                hist = ticker.history(period="6mo") 
                 if hist.empty: continue
                 
                 # 이름 찾기
                 name = stock_names.get(code, code)
                 if name == code:
-                    try: name = ticker.info.get('longName', code)
-                    except: pass
+                    try: 
+                        name = ticker.info.get('longName', code)
+                    except: 
+                        pass
                 
-                # 데이터 저장 (나중에 차트 그릴 때 씀)
+                # 데이터 저장
                 chart_data_dict[f"{name} ({code})"] = {
                     'hist': hist, 
                     'code': code
                 }
 
-                # 지표 계산 (표시용 최신값)
+                # 지표 계산
                 price = hist['Close'].iloc[-1]
                 rsi = get_rsi(hist).iloc[-1]
                 
@@ -156,7 +162,7 @@ if st.session_state.get('analyzed'):
                 p_str = f"{price:,.0f} 원" if code.endswith((".KS", ".KQ")) else f"{price:,.2f} $"
                 
                 analysis_data.append({
-                    "종목명": f"{name} ({code})", # 선택박스용 키
+                    "종목명": f"{name} ({code})",
                     "현재가": p_str,
                     "종합 의견": op,
                     "핵심 근거": ", ".join(reasons) if reasons else "-",
@@ -173,13 +179,10 @@ if st.session_state.get('analyzed'):
             st.subheader("📋 AI 투자 진단 리포트 (전체 요약)")
             st.dataframe(df[['종목명', '현재가', '종합 의견', '핵심 근거', 'RSI']], use_container_width=True, hide_index=True)
             
-            # ----------------------------------------------------
-            # 3단계: [NEW] 상세 분석 종목 선택 및 차트 그리기
-            # ----------------------------------------------------
+            # 3단계: 상세 차트
             st.markdown("---")
             st.subheader("📈 종목별 상세 차트 분석")
             
-            # 선택 박스 (표에 있는 종목들로 채움)
             selected_stock = st.selectbox("분석하고 싶은 종목을 선택하세요:", df['종목명'].tolist())
             
             if selected_stock:
@@ -188,16 +191,16 @@ if st.session_state.get('analyzed'):
                 
                 st.info(f"Checking: **{selected_stock}** 의 4대 지표 상세 그래프입니다.")
                 
-                # 지표 전체 다시 계산 (그래프용)
+                # 지표 재계산 (그래프용)
                 data['RSI'] = get_rsi(data)
                 data['MACD'], data['Signal'] = get_macd(data)
                 data['Upper'], data['MA'], data['Lower'] = get_bollinger(data)
                 data['Stoch'] = get_stochastic(data)
                 
-                # 그래프 그리기 (4행 1열)
+                # 그래프 그리기
                 fig, axes = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
                 
-                # 1. Price & Bollinger
+                # 1. Bollinger
                 axes[0].set_title("Price & Bollinger Bands")
                 axes[0].plot(data.index, data['Close'], label='Price', color='black')
                 axes[0].plot(data.index, data['Upper'], linestyle='--', label='Upper', color='red', alpha=0.5)
@@ -211,7 +214,6 @@ if st.session_state.get('analyzed'):
                 axes[1].plot(data.index, data['Signal'], label='Signal', color='blue')
                 axes[1].bar(data.index, data['MACD']-data['Signal'], label='Hist', color='gray', alpha=0.3)
                 axes[1].axhline(0, color='black', linestyle='--', linewidth=0.5)
-                axes[1].legend(loc='upper left')
 
                 # 3. RSI
                 axes[2].set_title("RSI (Relative Strength Index)")
