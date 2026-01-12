@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import os
 import numpy as np
+import urllib.parse # 이메일 링크 생성용 도구
 
 # ==========================================================
 # 🔧 한글 폰트 설정
@@ -25,11 +26,11 @@ def setup_korean_font():
 setup_korean_font()
 # ==========================================================
 
-# 1. 페이지 기본 설정
+# 1. 페이지 설정
 st.set_page_config(page_title="디지털강남서원 플랫폼", layout="wide")
 
 # ==========================================================
-# 📌 사이드바 메뉴 구성
+# 📌 사이드바 메뉴
 # ==========================================================
 st.sidebar.title("🗂️ 메뉴 선택")
 menu = st.sidebar.radio(
@@ -38,7 +39,6 @@ menu = st.sidebar.radio(
 )
 st.sidebar.markdown("---")
 
-# 종목 이름 사전
 stock_names = {
     "005930.KS": "삼성전자", "000660.KS": "SK하이닉스", "005380.KS": "현대차",
     "005490.KS": "POSCO홀딩스", "035420.KS": "NAVER", "035720.KS": "카카오",
@@ -54,23 +54,17 @@ if menu == "📈 AI 시장 분석기":
     st.title("📡 디지털강남서원 AI 시장 정밀 분석기")
     st.markdown("### 3대 기술적 지표 & 🔮 몬테카를로 미래 예측")
     
-    # -----------------------------------------------------------
-    # [수정된 부분] 문구 변경 및 MMI 안내 추가
-    # -----------------------------------------------------------
     st.success("**핵심 3대 지표**와 **미래 시뮬레이션**에 집중합니다.")
     st.info("💡 **당신 자신의 아이디어로 인덱스를 만들어 드립니다.** (좌측 상단 '✨ MMI' 메뉴 선택)")
-    # -----------------------------------------------------------
-    
     st.markdown("---")
 
-    # --- 분석기 사이드바 ---
     st.sidebar.header("🔍 종목 분석 요청")
     st.sidebar.info("입력 예시: `005930.KS` (삼성전자), `NVDA` (엔비디아)")
     
     example_text = """005930.KS\n000660.KS\nAAPL\nTSLA"""
     paste_area = st.sidebar.text_area("목록 붙여넣기", example_text, height=200)
 
-    # --- 함수 정의 ---
+    # --- 함수들 ---
     def get_rsi(data, window=14):
         delta = data['Close'].diff(1)
         gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
@@ -97,13 +91,10 @@ if menu == "📈 AI 시장 분석기":
         var = log_returns.var()
         drift = u - (0.5 * var)
         stdev = log_returns.std()
-        # 정규분포 함수 사용 (에러 수정됨)
         daily_returns = np.exp(drift + stdev * np.random.normal(0, 1, (days_forecast, simulations)))
-        
         last_price = hist['Close'].iloc[-1]
         price_list = np.zeros_like(daily_returns)
         price_list[0] = last_price
-        
         for t in range(1, days_forecast):
             price_list[t] = price_list[t - 1] * daily_returns[t]
         return price_list
@@ -129,12 +120,10 @@ if menu == "📈 AI 시장 분석기":
                     ticker = yf.Ticker(code)
                     hist = ticker.history(period="1y")
                     if hist.empty: continue
-                    
                     name = stock_names.get(code, code)
                     if name == code:
                         try: name = ticker.info.get('longName', code)
                         except: pass
-                    
                     chart_data_dict[code] = {'hist': hist, 'name': name}
                     price = hist['Close'].iloc[-1]
                     rsi = get_rsi(hist).iloc[-1]
@@ -191,91 +180,104 @@ if menu == "📈 AI 시장 분석기":
                     data['Stoch'] = get_stochastic(data)
                     
                     fig, axes = plt.subplots(4, 1, figsize=(12, 16))
-                    
                     axes[0].set_title("1. RSI")
                     axes[0].plot(data.index, data['RSI'], color='purple')
                     axes[0].axhline(70, color='red', ls='--'); axes[0].axhline(30, color='blue', ls='--')
-                    
                     axes[1].set_title("2. Bollinger Bands")
                     axes[1].plot(data.index, data['Close'], 'k'); axes[1].plot(data.index, data['Upper'], 'r--'); axes[1].plot(data.index, data['Lower'], 'b--')
-                    
                     axes[2].set_title("3. Stochastic")
                     axes[2].plot(data.index, data['Stoch'], 'g'); axes[2].axhline(80, color='red', ls='--'); axes[2].axhline(20, color='blue', ls='--')
-                    
                     axes[3].set_title("4. 🔮 몬테카를로 시뮬레이션 (60일 예측)")
                     sim_data = run_monte_carlo(data, 60, 50)
                     last = data['Close'].iloc[-1]
                     axes[3].plot(sim_data, color='gray', alpha=0.1)
                     axes[3].plot(sim_data.mean(axis=1), 'b', lw=2)
                     axes[3].axhline(last, color='black', ls='--')
-                    
                     up_prob = np.sum(sim_data[-1] > last) / 50 * 100
                     st.pyplot(fig)
                     st.success(f"**{stock_info['name']}** 60일 후 상승 확률: **{up_prob:.1f}%**")
 
 # ==========================================================
-# 🅱️ 두 번째 메뉴: MMI (나만의 지표 만들기)
+# 🅱️ 두 번째 메뉴: MMI (나만의 지표 만들기) - [이메일 기능 추가]
 # ==========================================================
 elif menu == "✨ MMI (나만의 지표 만들기)":
     st.title("✨ MMI (Make My Index)")
     st.markdown("### 당신만의 '비밀 투자 공식'을 현실로 만들어 드립니다.")
     
+    # ----------------------------------------------------
+    # 🚨 [중요] 여기에 선생님의 이메일을 입력하세요!
+    # ----------------------------------------------------
+    host_email = "kingkim.sim@gmail.com"  # 👈 이 부분을 선생님 이메일로 고치세요!
+    # ----------------------------------------------------
+    
     col1, col2 = st.columns([1, 1])
-    
     with col1:
-        st.info("""
-        **MMI 서비스란?**
-        
-        시중에 있는 평범한 지표(RSI, MACD)로는 만족하지 못하시나요?
-        고객님이 생각하시는 **독창적인 매매 논리**를 알려주세요.
-        
-        디지털강남서원의 금융 공학 팀이
-        **세상에 하나뿐인 알고리즘**으로 코딩해 드립니다.
-        """)
-    
+        st.info("**🔒 철저한 보안/비공개**\n\n고객님이 작성하신 전략은 서버에 저장되지 않고,\n오직 호스트(개발자)의 **이메일로만 직송**됩니다.\n안심하고 나만의 아이디어를 적어주세요.")
     with col2:
-        st.warning("""
-        **진행 절차**
-        1. 아래 양식에 생각하시는 지표의 논리를 적어주세요.
-        2. [지표 제작 신청] 버튼을 누릅니다.
-        3. 전문가가 검토 후 상담 연락을 드립니다.
-        4. 완성된 코드를 앱에 탑재해 드립니다.
-        """)
+        st.warning("**🚀 진행 절차**\n\n1. 지표 논리 작성\n2. [신청서 작성 완료] 클릭\n3. 생성된 **[📧 메일 보내기]** 버튼 클릭\n4. 내 메일함에서 전송하면 끝!")
         
     st.markdown("---")
-    
     st.subheader("📝 나만의 지표 설계도 작성")
     
     with st.form("mmi_form"):
         customer_name = st.text_input("성함 / 닉네임", placeholder="홍길동")
-        contact_info = st.text_input("연락처 (이메일 또는 전화번호)", placeholder="email@example.com")
-        
+        contact_info = st.text_input("연락처 (이메일/전화번호)", placeholder="010-1234-5678")
         st.markdown("#### 만들고 싶은 지표의 논리를 설명해 주세요.")
-        user_logic = st.text_area("지표 설명", height=150, placeholder="예: 삼성전자가 3일 연속 오르고 외국인이 100억 이상 샀을 때 '매수' 신호를 주는 지표를 만들어주세요.")
+        user_logic = st.text_area("지표 설명", height=150, placeholder="예: 삼성전자가 3일 연속 오르고 외국인이 100억 이상 샀을 때 '매수' 신호를 주는 지표")
         
-        submitted = st.form_submit_button("📩 지표 제작 신청하기")
-        
-        if submitted:
-            if user_logic and contact_info:
-                st.success(f"✅ 접수되었습니다! {customer_name}님만의 지표를 분석하여 곧 연락드리겠습니다.")
-                st.balloons()
-            else:
-                st.error("연락처와 지표 내용을 모두 입력해 주세요.")
+        submitted = st.form_submit_button("✅ 신청서 작성 완료 (클릭)")
+
+    # 폼 제출 후 처리 로직
+    if submitted:
+        if user_logic and contact_info:
+            # 이메일 본문 생성
+            subject = f"[MMI 신청] {customer_name}님의 지표 제작 요청"
+            body = f"""
+            [MMI 지표 제작 신청서]
+            
+            1. 신청자: {customer_name}
+            2. 연락처: {contact_info}
+            
+            3. 지표 논리 설명:
+            {user_logic}
+            
+            -----------------------------------------
+            위 내용을 바탕으로 제작을 의뢰합니다.
+            """
+            
+            # URL 인코딩 (한글 깨짐 방지)
+            encoded_subject = urllib.parse.quote(subject)
+            encoded_body = urllib.parse.quote(body)
+            mailto_link = f"mailto:{host_email}?subject={encoded_subject}&body={encoded_body}"
+            
+            st.success("신청서가 작성되었습니다! 아래 버튼을 눌러 메일을 전송해주세요.")
+            
+            # 메일 전송 버튼 (링크) 생성
+            st.markdown(f"""
+            <a href="{mailto_link}" target="_blank" style="
+                display: inline-block;
+                background-color: #4CAF50;
+                color: white;
+                padding: 15px 32px;
+                text-align: center;
+                text-decoration: none;
+                font-size: 16px;
+                border-radius: 8px;
+                font-weight: bold;
+            ">📧 눌어서 메일 전송하기 (최종 단계)</a>
+            """, unsafe_allow_html=True)
+            
+            st.caption("※ 버튼을 누르면 사용 중인 메일 앱(Outlook, Mail 등)이 열립니다. 내용을 확인 후 '보내기'를 눌러주세요.")
+            
+        else:
+            st.error("성함, 연락처, 지표 내용을 모두 입력해 주세요.")
 
     st.markdown("---")
     st.subheader("💡 MMI 작성 예시 (참고하세요)")
-    
-    with st.expander("예시 1: '강남서원 불기둥' 전략 보기", expanded=True):
+    with st.expander("예시: '강남서원 불기둥' 전략 보기", expanded=True):
         st.markdown("""
-        **[고객 요청 내용]**
-        > "저는 **거래량이 터지면서 가격이 급등할 때**만 사고 싶습니다.
-        > 아래 조건 3개가 모두 맞으면 **'강력 매수'**라고 뜨게 해주세요."
+        **[요청 내용]**
+        > "거래량이 3배 터지고 주가가 5% 이상 오르면 '강력 매수' 신호를 주세요."
         
-        **[구체적인 조건식]**
-        1. **오늘 거래량**이 어제 거래량의 **300% (3배)** 이상일 것.
-        2. **오늘 주가**가 **5% 이상 상승** 마감할 것.
-        3. RSI 지표는 아직 70을 넘지 않을 것 (너무 과열되지 않은 상태).
-        
-        ---
-        **👉 이렇게 적어주시면, 저희가 '강남서원 불기둥'이라는 이름의 지표로 만들어 앱에 추가해 드립니다.**
+        **👉 이렇게 적어서 보내주시면, 오직 선생님(호스트)만 볼 수 있습니다.**
         """)
