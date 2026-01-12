@@ -3,6 +3,12 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import urllib.parse # 이메일 연동을 위한 라이브러리
+
+# -----------------------------------------------------------------------------
+# [설정] 관리자 이메일 (여기에 선생님의 이메일 주소를 적어주세요!)
+# -----------------------------------------------------------------------------
+ADMIN_EMAIL = "kingkim.sim@gmail.com"  # <- 이 부분을 실제 이메일 주소로 변경하세요
 
 # -----------------------------------------------------------------------------
 # 1. 페이지 설정
@@ -101,7 +107,7 @@ def get_stock_name(ticker):
 # -----------------------------------------------------------------------------
 
 # ==========================================
-# [메뉴 1] AI 시장 분석기 (기존 기능 유지)
+# [메뉴 1] AI 시장 분석기
 # ==========================================
 if menu == "📊 AI 시장 분석기":
     
@@ -235,7 +241,7 @@ if menu == "📊 AI 시장 분석기":
             st.error("데이터를 불러오지 못했습니다. 티커를 확인해주세요.")
 
 # ==========================================
-# [메뉴 2] MMI (나만의 인덱스) - 주문형으로 변경
+# [메뉴 2] MMI (나만의 인덱스) - 주문 + 이메일 연동
 # ==========================================
 elif menu == "✨ MMI (나만의 인덱스)":
     st.subheader("✨ MMI 인덱스 개발 의뢰")
@@ -244,11 +250,9 @@ elif menu == "✨ MMI (나만의 인덱스)":
     **Digital 강남서원**의 퀀트 전문가가 당신만의 인덱스 산식으로 구현해 드립니다.
     """)
     
-    # 주문 폼 UI
     with st.container(border=True):
         st.markdown("### 📝 아이디어 명세서")
         
-        # 입력 폼
         client_name = st.text_input("의뢰자 성명 (또는 닉네임)")
         index_name = st.text_input("인덱스 이름 (예: K-반도체 저평가 3선)")
         
@@ -260,18 +264,57 @@ elif menu == "✨ MMI (나만의 인덱스)":
         
         contact_info = st.text_input("연락받을 이메일 (결과 리포트 발송용)")
         
-        # 전송 버튼
-        submitted = st.button("📨 인덱스 개발 의뢰하기", use_container_width=True)
+        # 버튼을 누르면 '준비' 상태가 됨
+        submitted = st.button("📨 주문서 작성 완료", use_container_width=True)
 
         if submitted:
             if client_name and idea_desc:
-                st.success(f"✅ **{client_name}**님의 주문이 정상적으로 접수되었습니다!")
-                st.balloons() # 축하 효과
-                st.info("담당자가 내용을 검토한 후, 입력하신 이메일로 인덱스 분석 리포트를 보내드립니다.")
-            else:
-                st.error("성명과 아이디어 설명을 입력해주세요.")
+                st.success(f"✅ **{client_name}**님의 주문서가 작성되었습니다!")
+                
+                # --- 이메일 본문 생성 로직 ---
+                subject = f"[Digital 강남서원 MMI 의뢰] {client_name}님의 주문 - {index_name}"
+                body = f"""
+                [MMI 인덱스 개발 의뢰서]
+                
+                1. 의뢰자: {client_name}
+                2. 연락처: {contact_info}
+                3. 인덱스 이름: {index_name}
+                
+                4. 아이디어 상세:
+                {idea_desc}
+                
+                --------------------------------
+                위 내용으로 인덱스 개발을 의뢰합니다.
+                """
+                
+                # URL 인코딩 (특수문자 처리)
+                email_subject = urllib.parse.quote(subject)
+                email_body = urllib.parse.quote(body)
+                
+                # mailto 링크 생성
+                mailto_link = f"mailto:{ADMIN_EMAIL}?subject={email_subject}&body={email_body}"
+                
+                st.markdown("⬇️ **아래 버튼을 눌러 이메일을 전송해주세요.**")
+                
+                # HTML 링크 버튼 생성 (새 창에서 이메일 클라이언트 열기)
+                st.markdown(f'''
+                    <a href="{mailto_link}" target="_blank" style="
+                        display: inline-block;
+                        padding: 12px 20px;
+                        background-color: #FF4B4B;
+                        color: white;
+                        text-align: center;
+                        text-decoration: none;
+                        border-radius: 8px;
+                        font-weight: bold;
+                    ">🚀 이메일 앱 열어서 보내기 (Click)</a>
+                ''', unsafe_allow_html=True)
 
-    # 하단 예시 이미지 등 (꾸밈 요소)
+                st.info("⚠️ 위 버튼을 누르면 PC나 스마트폰의 이메일 앱이 열리며, 내용이 자동으로 채워집니다.")
+                st.balloons()
+            else:
+                st.error("성명과 아이디어 설명을 모두 입력해주세요.")
+
     st.divider()
     st.markdown("#### 💡 이런 인덱스들이 만들어지고 있습니다.")
     st.info("🔹 **'강남 3구 부동산 연동 리츠 지수'** (김**수 회원님)")
