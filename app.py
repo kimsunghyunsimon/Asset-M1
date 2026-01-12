@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import os
 import numpy as np
-import urllib.parse # 이메일 링크 생성용 도구
+import urllib.parse 
 
 # ==========================================================
 # 🔧 한글 폰트 설정
@@ -198,7 +198,7 @@ if menu == "📈 AI 시장 분석기":
                     st.success(f"**{stock_info['name']}** 60일 후 상승 확률: **{up_prob:.1f}%**")
 
 # ==========================================================
-# 🅱️ 두 번째 메뉴: MMI (나만의 지표 만들기) - [이메일 기능 추가]
+# 🅱️ 두 번째 메뉴: MMI (나만의 지표 만들기)
 # ==========================================================
 elif menu == "✨ MMI (나만의 지표 만들기)":
     st.title("✨ MMI (Make My Index)")
@@ -207,14 +207,14 @@ elif menu == "✨ MMI (나만의 지표 만들기)":
     # ----------------------------------------------------
     # 🚨 [중요] 여기에 선생님의 이메일을 입력하세요!
     # ----------------------------------------------------
-    host_email = "kingkim.sim@gmail.com"  # 👈 이 부분을 선생님 이메일로 고치세요!
+    host_email = "kingkim.sim@gmail.com" 
     # ----------------------------------------------------
     
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.info("**🔒 철저한 보안/비공개**\n\n고객님이 작성하신 전략은 서버에 저장되지 않고,\n오직 호스트(개발자)의 **이메일로만 직송**됩니다.\n안심하고 나만의 아이디어를 적어주세요.")
+        st.info("**🔒 철저한 보안/비공개**\n\n고객님이 작성하신 전략은 서버에 저장되지 않고,\n오직 호스트(개발자)의 **이메일로만 직송**됩니다.")
     with col2:
-        st.warning("**🚀 진행 절차**\n\n1. 지표 논리 작성\n2. [신청서 작성 완료] 클릭\n3. 생성된 **[📧 메일 보내기]** 버튼 클릭\n4. 내 메일함에서 전송하면 끝!")
+        st.warning("**🚀 진행 절차**\n\n1. 지표 논리 작성\n2. [신청서 작성 완료] 클릭\n3. [메일 전송하기] 버튼 클릭")
         
     st.markdown("---")
     st.subheader("📝 나만의 지표 설계도 작성")
@@ -227,32 +227,24 @@ elif menu == "✨ MMI (나만의 지표 만들기)":
         
         submitted = st.form_submit_button("✅ 신청서 작성 완료 (클릭)")
 
-    # 폼 제출 후 처리 로직
     if submitted:
         if user_logic and contact_info:
-            # 이메일 본문 생성
             subject = f"[MMI 신청] {customer_name}님의 지표 제작 요청"
             body = f"""
             [MMI 지표 제작 신청서]
-            
             1. 신청자: {customer_name}
             2. 연락처: {contact_info}
-            
             3. 지표 논리 설명:
             {user_logic}
-            
-            -----------------------------------------
-            위 내용을 바탕으로 제작을 의뢰합니다.
             """
             
-            # URL 인코딩 (한글 깨짐 방지)
             encoded_subject = urllib.parse.quote(subject)
             encoded_body = urllib.parse.quote(body)
             mailto_link = f"mailto:{host_email}?subject={encoded_subject}&body={encoded_body}"
             
-            st.success("신청서가 작성되었습니다! 아래 버튼을 눌러 메일을 전송해주세요.")
+            st.success("작성이 완료되었습니다! 아래 초록색 버튼을 눌러 메일을 보내주세요.")
             
-            # 메일 전송 버튼 (링크) 생성
+            # [수정 1] 오타 수정: '눌어서' 삭제
             st.markdown(f"""
             <a href="{mailto_link}" target="_blank" style="
                 display: inline-block;
@@ -264,13 +256,18 @@ elif menu == "✨ MMI (나만의 지표 만들기)":
                 font-size: 16px;
                 border-radius: 8px;
                 font-weight: bold;
-            ">📧 눌어서 메일 전송하기 (최종 단계)</a>
+            ">📧 메일 전송하기 (최종 단계)</a>
             """, unsafe_allow_html=True)
             
-            st.caption("※ 버튼을 누르면 사용 중인 메일 앱(Outlook, Mail 등)이 열립니다. 내용을 확인 후 '보내기'를 눌러주세요.")
+            # [수정 2] 전송 실패 시 대비책 (내용 복사 기능)
+            st.markdown("---")
+            st.warning("⚠️ 혹시 위 버튼을 눌러도 반응이 없나요?")
+            st.info("사용하시는 컴퓨터에 메일 프로그램(Outlook 등)이 없어서 그렇습니다.\n**아래 내용을 복사(Ctrl+C)해서, 평소 쓰시는 메일로 직접 보내주세요.**")
+            st.text_area("신청서 내용 복사하기", value=body, height=200)
+            st.caption(f"보내실 곳: {host_email}")
             
         else:
-            st.error("성함, 연락처, 지표 내용을 모두 입력해 주세요.")
+            st.error("모든 내용을 입력해 주세요.")
 
     st.markdown("---")
     st.subheader("💡 MMI 작성 예시 (참고하세요)")
@@ -278,6 +275,4 @@ elif menu == "✨ MMI (나만의 지표 만들기)":
         st.markdown("""
         **[요청 내용]**
         > "거래량이 3배 터지고 주가가 5% 이상 오르면 '강력 매수' 신호를 주세요."
-        
-        **👉 이렇게 적어서 보내주시면, 오직 선생님(호스트)만 볼 수 있습니다.**
         """)
