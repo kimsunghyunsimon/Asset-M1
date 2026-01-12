@@ -2,4 +2,3 @@ streamlit
 pandas
 yfinance
 matplotlib
-koreanize-matplotlib
