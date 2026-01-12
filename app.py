@@ -19,7 +19,6 @@ st.set_page_config(
 with st.sidebar:
     st.header("Digital 강남서원")
     
-    # [수정 1] 메뉴 아이콘을 상단 설명과 일치시킴 (📊, ✨)
     menu = st.radio("메뉴 선택", ["📊 AI 시장 분석기", "✨ MMI (나만의 인덱스)"])
     st.markdown("---")
     
@@ -54,7 +53,8 @@ with col_head1:
     st.info("**📊 AI시장 분석기**\n\n주식시장의 핵심 3대 지표와 미래 시뮬레이션에 집중합니다.")
 
 with col_head2:
-    st.success("**✨ MMI**\n\n당신 자신의 아이디어로 인덱스를 만들어 드립니다.\n(좌측 상단 '✨ MMI' 메뉴 선택)")
+    # [수정 완료] 요청하신 대로 타이틀을 변경했습니다.
+    st.success("**✨ MMI (Make My Index)**\n\n당신 자신의 아이디어로 인덱스를 만들어 드립니다.\n(좌측 상단 '✨ MMI' 메뉴 선택)")
 
 st.divider()
 
@@ -71,14 +71,34 @@ def get_data(ticker, period):
     except Exception as e:
         return pd.DataFrame()
 
-# [수정 2] 기업 이름 가져오는 함수 추가
+# 기업 이름 가져오기 (주요 종목 매핑 + 예외처리 강화)
 def get_stock_name(ticker):
+    manual_names = {
+        "005930.KS": "Samsung Electronics (삼성전자)",
+        "000660.KS": "SK Hynix (SK하이닉스)",
+        "373220.KS": "LG Energy Solution (LG에너지솔루션)",
+        "207940.KS": "Samsung Biologics (삼성바이오로직스)",
+        "005380.KS": "Hyundai Motor (현대차)",
+        "000270.KS": "Kia (기아)",
+        "005490.KS": "POSCO Holdings (포스코홀딩스)",
+        "035420.KS": "NAVER (네이버)",
+        "068270.KS": "Celltrion (셀트리온)",
+        "086520.KQ": "Ecopro (에코프로)",
+        "247540.KQ": "Ecopro BM (에코프로비엠)"
+    }
+    
+    if ticker in manual_names:
+        return manual_names[ticker]
+
     try:
         stock_info = yf.Ticker(ticker).info
-        # 긴 이름(longName)이 없으면 짧은 이름(shortName), 그것도 없으면 티커 반환
-        return stock_info.get('longName', stock_info.get('shortName', ticker))
+        name = stock_info.get('longName') or stock_info.get('shortName')
+        if name:
+            return name
     except:
-        return ticker
+        pass
+        
+    return ticker
 
 def calculate_indicators(df):
     # 이동평균
@@ -105,16 +125,20 @@ if menu == "📊 AI 시장 분석기":
     if ticker:
         with st.spinner('데이터를 분석 중입니다...'):
             df = get_data(ticker, period)
-            # 기업 이름 가져오기
             stock_name = get_stock_name(ticker)
         
         if not df.empty:
             df = calculate_indicators(df)
             
-            # --- [Part 1] 4대 핵심 그래프 (2x2) ---
-            # [수정 2 적용] 제목에 티커 대신 기업 이름 표시
-            st.subheader(f"📈 {stock_name} ({ticker}) 핵심 지표 분석")
+            # 제목 표시 로직
+            if stock_name == ticker:
+                display_title = f"📈 {stock_name} 핵심 지표 분석"
+            else:
+                display_title = f"📈 {stock_name} ({ticker}) 핵심 지표 분석"
+                
+            st.subheader(display_title)
             
+            # --- [Part 1] 4대 핵심 그래프 (2x2) ---
             row1_col1, row1_col2 = st.columns(2)
             row2_col1, row2_col2 = st.columns(2)
             
