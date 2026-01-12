@@ -23,7 +23,7 @@ with st.sidebar:
     menu = st.radio("메뉴 선택", ["🏠 AI 시장 분석기", "✨ MMI (나만의 인덱스)"])
     st.markdown("---")
     
-    # 종목 입력기 (원래대로 유지)
+    # 종목 입력기
     st.subheader("🔍 종목 검색")
     ticker = st.text_input("티커 입력 (예: SPY, AAPL, NVDA)", value="SPY").upper()
     period = st.selectbox("분석 기간", ["1y", "2y", "5y", "10y"], index=0)
@@ -31,10 +31,10 @@ with st.sidebar:
     st.info("💡 티커를 입력하고 엔터를 누르면 우측 화면이 갱신됩니다.")
 
 # -----------------------------------------------------------------------------
-# 3. 메인 화면 - 상단 디자인 (요청하신 스타일)
+# 3. 메인 화면 - 상단 디자인
 # -----------------------------------------------------------------------------
 
-# 헤드라인 (굵고 크게)
+# 헤드라인
 st.markdown("""
     <h1 style='text-align: center; margin-bottom: 30px; font-size: 3rem;'>
         Digital 강남서원
@@ -70,23 +70,23 @@ def get_data(ticker, period):
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         return df
-    exceptException as e:
+    except Exception as e:  # <--- 여기에 띄어쓰기를 수정했습니다!
         return pd.DataFrame()
 
-# 지표 계산 함수 (RSI, MACD 등)
+# 지표 계산 함수
 def calculate_indicators(df):
     # 이동평균
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA60'] = df['Close'].rolling(window=60).mean()
     
-    # RSI (상대강도지수)
+    # RSI
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
     
-    # MACD (이동평균수렴확산)
+    # MACD
     exp12 = df['Close'].ewm(span=12, adjust=False).mean()
     exp26 = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = exp12 - exp26
@@ -108,7 +108,7 @@ if menu == "🏠 AI 시장 분석기":
             row1_col1, row1_col2 = st.columns(2)
             row2_col1, row2_col2 = st.columns(2)
             
-            # 1. 주가 & 이동평균선 (좌측 상단)
+            # 1. 주가 & 이동평균선
             with row1_col1:
                 st.markdown("**1. 주가 및 이동평균선**")
                 fig1 = go.Figure()
@@ -118,7 +118,7 @@ if menu == "🏠 AI 시장 분석기":
                 fig1.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20), xaxis_rangeslider_visible=False)
                 st.plotly_chart(fig1, use_container_width=True)
             
-            # 2. 거래량 (우측 상단)
+            # 2. 거래량
             with row1_col2:
                 st.markdown("**2. 거래량 추이**")
                 fig2 = go.Figure()
@@ -127,7 +127,7 @@ if menu == "🏠 AI 시장 분석기":
                 fig2.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20))
                 st.plotly_chart(fig2, use_container_width=True)
                 
-            # 3. RSI 보조지표 (좌측 하단)
+            # 3. RSI
             with row2_col1:
                 st.markdown("**3. RSI (상대강도지수)**")
                 fig3 = go.Figure()
@@ -137,7 +137,7 @@ if menu == "🏠 AI 시장 분석기":
                 fig3.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20), yaxis_range=[0, 100])
                 st.plotly_chart(fig3, use_container_width=True)
 
-            # 4. MACD 추세지표 (우측 하단)
+            # 4. MACD
             with row2_col2:
                 st.markdown("**4. MACD & Signal**")
                 fig4 = go.Figure()
@@ -150,14 +150,9 @@ if menu == "🏠 AI 시장 분석기":
         else:
             st.error("데이터를 불러올 수 없습니다. 티커를 확인해주세요.")
 
-# [메뉴 2] MMI (화면 유지)
 elif menu == "✨ MMI (나만의 인덱스)":
     st.subheader("✨ MMI 생성기")
-    st.write("이곳에서 나만의 인덱스를 구성할 수 있습니다.")
     st.info("준비 중인 기능입니다.")
 
-# -----------------------------------------------------------------------------
-# 5. 푸터
-# -----------------------------------------------------------------------------
 st.markdown("---")
-st.caption("© 2024 Digital 강남서원 | Powered by Streamlit & Yahoo Finance")
+st.caption("© 2024 Digital 강남서원")
