@@ -19,12 +19,12 @@ st.set_page_config(
 with st.sidebar:
     st.header("Digital 강남서원")
     
-    menu = st.radio("메뉴 선택", ["🏠 AI 시장 분석기", "✨ MMI (나만의 인덱스)"])
+    # [수정 1] 메뉴 아이콘을 상단 설명과 일치시킴 (📊, ✨)
+    menu = st.radio("메뉴 선택", ["📊 AI 시장 분석기", "✨ MMI (나만의 인덱스)"])
     st.markdown("---")
     
     st.subheader("🔍 종목 검색")
     
-    # 한국 주식 입력 팁 추가
     with st.expander("📌 국내 주식 입력 방법 (Click)"):
         st.markdown("""
         **종목코드 뒤에 국가 코드를 붙여주세요.**
@@ -71,6 +71,15 @@ def get_data(ticker, period):
     except Exception as e:
         return pd.DataFrame()
 
+# [수정 2] 기업 이름 가져오는 함수 추가
+def get_stock_name(ticker):
+    try:
+        stock_info = yf.Ticker(ticker).info
+        # 긴 이름(longName)이 없으면 짧은 이름(shortName), 그것도 없으면 티커 반환
+        return stock_info.get('longName', stock_info.get('shortName', ticker))
+    except:
+        return ticker
+
 def calculate_indicators(df):
     # 이동평균
     df['MA20'] = df['Close'].rolling(window=20).mean()
@@ -92,16 +101,19 @@ def calculate_indicators(df):
     return df
 
 # [메뉴 1] AI 시장 분석기
-if menu == "🏠 AI 시장 분석기":
+if menu == "📊 AI 시장 분석기":
     if ticker:
         with st.spinner('데이터를 분석 중입니다...'):
             df = get_data(ticker, period)
+            # 기업 이름 가져오기
+            stock_name = get_stock_name(ticker)
         
         if not df.empty:
             df = calculate_indicators(df)
             
             # --- [Part 1] 4대 핵심 그래프 (2x2) ---
-            st.subheader(f"📈 {ticker} 핵심 지표 분석")
+            # [수정 2 적용] 제목에 티커 대신 기업 이름 표시
+            st.subheader(f"📈 {stock_name} ({ticker}) 핵심 지표 분석")
             
             row1_col1, row1_col2 = st.columns(2)
             row2_col1, row2_col2 = st.columns(2)
@@ -148,7 +160,7 @@ if menu == "🏠 AI 시장 분석기":
             st.markdown("---")
 
             # --- [Part 2] 종합 매수/매도 판단 ---
-            st.subheader("🤖 AI 기술적 지표 종합 판단")
+            st.subheader(f"🤖 {stock_name} 기술적 지표 종합 판단")
             
             last_row = df.iloc[-1]
             score = 0
@@ -196,10 +208,10 @@ if menu == "🏠 AI 시장 분석기":
 
             st.markdown("---")
 
-            # --- [Part 3] 몬테카를로 시뮬레이션 및 결과 코멘트 ---
-            st.subheader("🔮 몬테카를로 미래 예측 (6개월)")
+            # --- [Part 3] 몬테카를로 시뮬레이션 ---
+            st.subheader(f"🔮 {stock_name} 미래 예측 (6개월)")
             
-            days_forecast = 126 # 6개월
+            days_forecast = 126
             simulations = 50
             last_price = df['Close'].iloc[-1]
             daily_vol = df['Close'].pct_change().std()
@@ -213,32 +225,25 @@ if menu == "🏠 AI 시장 분석기":
                     price_series.append(price_series[-1] * (1 + r))
                 sim_df[f'Sim_{i}'] = price_series
 
-            # --- 결과 분석 로직 추가 ---
-            # 모든 시나리오의 마지막 날(6개월 후) 가격들의 평균 계산
             end_prices = sim_df.iloc[-1]
             mean_end_price = end_prices.mean()
             max_end_price = end_prices.max()
             min_end_price = end_prices.min()
             
-            # 수익률 계산
             expected_return = ((mean_end_price - last_price) / last_price) * 100
-            
-            # 상승/하락 텍스트 컬러링
             color_str = "red" if expected_return > 0 else "blue"
             direction_str = "상승" if expected_return > 0 else "하락"
 
-            # 코멘트 출력
             st.info(f"""
             📊 **시뮬레이션 요약 분석**
             
-            현재 주가 (**{last_price:,.0f}**) 대비 6개월 후 평균적으로 약 **:{color_str}[{expected_return:.2f}% {direction_str}]** 할 것으로 예측됩니다.
+            **{stock_name}**의 현재 주가 (**{last_price:,.0f}**) 대비 6개월 후 평균적으로 약 **:{color_str}[{expected_return:.2f}% {direction_str}]** 할 것으로 예측됩니다.
             
             - **평균 예상가**: {mean_end_price:,.0f}
             - **최대 낙관가**: {max_end_price:,.0f} (Best Case)
             - **최대 비관가**: {min_end_price:,.0f} (Worst Case)
             """)
 
-            # 차트 그리기
             fig_mc = go.Figure()
             for col in sim_df.columns:
                 fig_mc.add_trace(go.Scatter(y=sim_df[col], mode='lines', 
@@ -248,7 +253,7 @@ if menu == "🏠 AI 시장 분석기":
             fig_mc.add_trace(go.Scatter(y=sim_df.mean(axis=1), mode='lines',
                                         line=dict(width=3, color='red'), name='평균 예상 경로'))
             
-            fig_mc.update_layout(height=400, title=f"{ticker} 향후 6개월 시나리오 (50회 반복)", 
+            fig_mc.update_layout(height=400, title=f"{stock_name} 향후 6개월 시나리오", 
                                  xaxis_title="미래 거래일수 (Days)", yaxis_title="주가")
             st.plotly_chart(fig_mc, use_container_width=True)
 
