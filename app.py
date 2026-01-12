@@ -30,12 +30,12 @@ setup_korean_font()
 st.set_page_config(page_title="디지털강남서원 플랫폼", layout="wide")
 
 # ==========================================================
-# 📌 사이드바 메뉴
+# 📌 사이드바 메뉴 (수정됨: Make My Index)
 # ==========================================================
 st.sidebar.title("🗂️ 메뉴 선택")
 menu = st.sidebar.radio(
     "이동할 페이지를 선택하세요:",
-    ["📈 AI 시장 분석기", "✨ MMI (나만의 지표 만들기)"]
+    ["📈 AI 시장 분석기", "✨ MMI (Make My Index)"]
 )
 st.sidebar.markdown("---")
 
@@ -198,9 +198,9 @@ if menu == "📈 AI 시장 분석기":
                     st.success(f"**{stock_info['name']}** 60일 후 상승 확률: **{up_prob:.1f}%**")
 
 # ==========================================================
-# 🅱️ 두 번째 메뉴: MMI (나만의 지표 만들기)
+# 🅱️ 두 번째 메뉴: MMI (Make My Index)
 # ==========================================================
-elif menu == "✨ MMI (나만의 지표 만들기)":
+elif menu == "✨ MMI (Make My Index)":
     st.title("✨ MMI (Make My Index)")
     st.markdown("### 당신만의 '비밀 투자 공식'을 현실로 만들어 드립니다.")
     
@@ -244,7 +244,6 @@ elif menu == "✨ MMI (나만의 지표 만들기)":
             
             st.success("작성이 완료되었습니다! 아래 초록색 버튼을 눌러 메일을 보내주세요.")
             
-            # [수정 1] 오타 수정: '눌어서' 삭제
             st.markdown(f"""
             <a href="{mailto_link}" target="_blank" style="
                 display: inline-block;
@@ -259,7 +258,6 @@ elif menu == "✨ MMI (나만의 지표 만들기)":
             ">📧 메일 전송하기 (최종 단계)</a>
             """, unsafe_allow_html=True)
             
-            # [수정 2] 전송 실패 시 대비책 (내용 복사 기능)
             st.markdown("---")
             st.warning("⚠️ 혹시 위 버튼을 눌러도 반응이 없나요?")
             st.info("사용하시는 컴퓨터에 메일 프로그램(Outlook 등)이 없어서 그렇습니다.\n**아래 내용을 복사(Ctrl+C)해서, 평소 쓰시는 메일로 직접 보내주세요.**")
